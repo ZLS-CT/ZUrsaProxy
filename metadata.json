@@ -1,0 +1,10 @@
+{
+    "name": "ZUrsaProxy",
+    "description": "CT port of NEU's Ursa Minor Hypixel API proxy.",
+    "author": "Zephy (Nvidia2080Ti)",
+    "requires": [
+        "ZRequest"
+    ],
+    "version": "1.0.0",
+    "entry": "index.js"
+}
