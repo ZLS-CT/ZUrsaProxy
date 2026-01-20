@@ -13,25 +13,15 @@
 */
 
 import { fetch } from "../ZRequest/fetch"
-
-const versionToInt = (version) => {
-    const [major, minor, patch] = version.split(".").map(Number)
-    return Number(
-        `${major}${String(minor).padStart(2, "0")}${String(patch).padStart(2, "0")}`
-    )
-}
-
-const mc = Client.getMinecraft()
-const ForgeVersion = GetJavaClass("net.minecraftforge.common.ForgeVersion")
-let _gameVersion = Client.getVersion()
-if (Object.keys(ForgeVersion).length > 0) {
-    _gameVersion = ForgeVersion.mcVersion
-}
-const gameVersion = versionToInt(_gameVersion)
-const isLegacy = gameVersion < 12100
+import { isLegacy, StartDelayedCallback, _ChatDebug, ChatDebug } from "../ZCore"
 
 const UUID = Java.type("java.util.UUID")
-const ChatLog = (prefix, ...strings) => ChatLib.chat("§6[§9UrsaMinor§6] §r" + prefix + strings.join(" | "))
+
+const maxRetryCount = 3
+const retryDelayMs = 1000
+const chatPrefix = "§6[§9UrsaMinor§6] §r"
+const debug = false
+
 const AuthenticationState = {
     NOT_ATTEMPTED: "NOT_ATTEMPTED",
     FAILED_TO_JOINSERVER: "FAILED_TO_JOINSERVER",
@@ -40,9 +30,7 @@ const AuthenticationState = {
     SUCCEEDED: "SUCCEEDED",
     OUTDATED: "OUTDATED",
 }
-const maxRetryCount = 3
-const retryDelayMs = 1000
-const debug = true
+const ChatLog = (...strings) => _ChatDebug(chatPrefix, strings)
 
 export const profilesPath = (uuid) => `v1/hypixel/v2/profiles/${uuid}`
 export const playerPath = (uuid) => `v1/hypixel/v2/player/${uuid}`
@@ -51,24 +39,6 @@ export const bingoPath = (uuid) => `v1/hypixel/v2/bingo/${uuid}`
 export const museumForProfile = (profileUuid) => `v1/hypixel/v2/museum/${profileUuid}`
 export const gardenForProfile = (profileUuid) => `v1/hypixel/v2/garden/${profileUuid}`
 export const statusPath = (uuid) => `v1/hypixel/v2/status/${uuid}`
-
-// const randomServerId = UUID.randomUUID().toString()
-// let authenticationHeaders = null
-
-let delayedCallbacks = {}
-function StartDelayedCallback(delayID, delayMs, callback) {
-    let isScheduled = delayedCallbacks.hasOwnProperty(delayID)
-    delayedCallbacks[delayID] = Date.now()
-    if (isScheduled) return
-
-    let stepRegister = register("step", () => {
-        if (Date.now() - delayedCallbacks[delayID] >= delayMs) {
-            callback()
-            delete delayedCallbacks[delayID]
-            stepRegister.unregister()
-        }
-    }).setFps(20)
-}
 
 class UrsaToken {
     constructor(validUntil, ursaToken, obtainedFrom) {
@@ -102,12 +72,10 @@ class UrsaClient {
     authorizeRequest(ursaToken = null) {
         let headers = {}
         if (ursaToken != null && ursaToken.obtainedFrom == this.ursaRoot) {
-            if (debug) ChatLog("Authorizing request using Ursa Token")
+            if (debug) ChatDebug("Authorizing request using Ursa Token")
             headers["x-ursa-token"] = ursaToken.ursaToken
         } else {
-            // if (authenticationHeaders != null) return authenticationHeaders
-
-            if (debug) ChatLog("Authorizing request using username and serverId")
+            if (debug) ChatDebug("Authorizing request using username and serverId")
             const randomServerId = UUID.randomUUID().toString()
             if (isLegacy) {
                 // I don't save this, read top of file
@@ -138,15 +106,14 @@ class UrsaClient {
                     randomServerId,
                 )
             }
-            if (debug) ChatLog("Authorizing request using username and serverId complete")
+            if (debug) ChatDebug("Authorizing request using username and serverId complete")
         }
 
-        // authenticationHeaders = headers
         return headers
     }
 
     saveUrsaToken(responseHeaders) {
-        if (debug) ChatLog("Attempting to save Ursa token")
+        if (debug) ChatDebug("Attempting to save Ursa token")
         const ursaTokenHeader = responseHeaders["X-Ursa-Token"]
         const expiresHeader = responseHeaders["X-Ursa-Expires"]
 
@@ -159,28 +126,28 @@ class UrsaClient {
 
         if (ursaTokenHeader == null) {
             this.isPollingForUrsaToken = false
-            if (debug) ChatLog("No Ursa token found. Marking as non polling")
+            if (debug) ChatDebug("No Ursa token found. Marking as non polling")
         } else {
             this.ursaToken = new UrsaToken(validUntil, ursaTokenHeader, this.ursaRoot)
             this.isPollingForUrsaToken = false
             this.authenticationState = AuthenticationState.SUCCEEDED
-            if (debug) ChatLog("Ursa Token saving successful")
+            if (debug) ChatDebug("Ursa Token saving successful")
         }
     }
     performRequest(req, ursaToken) {
         const url = `${this.ursaRoot}/${req.path}`
 
         try {
-            if (debug) ChatLog("Ursa Request started")
+            if (debug) ChatDebug("Ursa Request started")
             const headers = this.authorizeRequest(ursaToken)
-            if (debug) ChatLog(`Sending request to ${url} with headers ${JSON.stringify(headers)}`)
+            if (debug) ChatDebug(`Sending request to ${url} with headers ${JSON.stringify(headers)}`)
             fetch(url, {
                 headers: headers,
                 json: true,
                 timeout: 10000,
             })
             .then((response) => {
-                if (debug) ChatLog(`Request completed.`)
+                if (debug) ChatDebug(`Request completed.`)
                 this.saveUrsaToken(response.headers || {})
                 req.callback(true, response)
             })
@@ -212,21 +179,21 @@ class UrsaClient {
 
             const nextRequest = this.queue.shift()
             if (nextRequest == null) {
-                if (debug) ChatLog("No request to bump found")
+                if (debug) ChatDebug("No request to bump found")
                 return
             }
 
-            if (debug) ChatLog("Request found")
+            if (debug) ChatDebug("Request found")
             let ursaToken = this.ursaToken
 
             if (!(ursaToken != null && ursaToken.isValid() && ursaToken.obtainedFrom == this.ursaRoot)) {
                 this.isPollingForUrsaToken = true
                 ursaToken = null
                 if (this.ursaToken != null) {
-                    if (debug) ChatLog("Disposing old invalid ursa token.")
+                    if (debug) ChatDebug("Disposing old invalid ursa token.")
                     this.ursaToken = null
                 }
-                if (debug) ChatLog("No Ursa token saved. Marking this request as a Ursa token poll request")
+                if (debug) ChatDebug("No Ursa token saved. Marking this request as a Ursa token poll request")
             }
             this.performRequest(nextRequest, ursaToken)
         }
@@ -256,7 +223,7 @@ class UrsaClient {
                     return
                 }
 
-                if (debug) ChatLog(`Request failed, retrying ${currentRetryCount + 1}/${maxRetryCount}`)
+                if (debug) ChatDebug(`Request failed, retrying ${currentRetryCount + 1}/${maxRetryCount}`)
                 StartDelayedCallback(`ursaRetry${path}`, retryDelayMs, () => {
                     this.getWithRetrys(path, callback, currentRetryCount + 1)
                 })

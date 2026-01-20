@@ -3,6 +3,7 @@
     "description": "CT port of NEU's Ursa Minor Hypixel API proxy.",
     "author": "Zephy (Nvidia2080Ti)",
     "requires": [
+        "ZCore",
         "ZRequest"
     ],
     "version": "1.0.0",
