@@ -288,19 +288,3 @@ class UrsaClient {
     }
 }
 export const ursaClient = new UrsaClient()
-
-const playerUUID = "4f6848b0b95341758abdbad2d1bf0206" // me
-// const playerUUID = "fdd3ac06ecc24d14a914c5652dc4d3bc" // max sb xp guy
-// const playerUUID = "1277d71f338046e298d90c9fe4055f00" // swavy
-register("command", () => {
-    ursaClient.getStatus(playerUUID, (success, data) => {
-        if (!success) {
-            ChatLib.chat(`Error fetching data: ${JSON.stringify(data)}`)
-            return
-        }
-        ChatLib.chat(JSON.stringify(data))
-    })
-    // ursaClient.getProfiles(playerUUID, (success, data) => {
-    //     SimplifyProfileData(data)
-    // })
-}).setName("testursa")
