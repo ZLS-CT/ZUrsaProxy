@@ -210,9 +210,9 @@ class UrsaClient {
         }
         return this.authenticationState
     }
-    getWithRetrys(path, callback, currentRetryCount = 0) {
+    getWithRetrys(path, callback, _maxRetryCount = maxRetryCount, currentRetryCount = 0) {
         this.get(path, (success, data) => {
-            if (!success && currentRetryCount < maxRetryCount) {
+            if (!success && currentRetryCount < _maxRetryCount) {
                 if (this.authenticationState == AuthenticationState.REJECTED) {
                     ChatLog("§cUrsa request rejected. Not retrying.")
                     callback(false, data)
@@ -223,7 +223,7 @@ class UrsaClient {
                     return
                 }
 
-                if (debug) ChatDebug(`Request failed, retrying ${currentRetryCount + 1}/${maxRetryCount}`)
+                if (debug) ChatDebug(`Request failed, retrying ${currentRetryCount + 1}/${_maxRetryCount}`)
                 StartDelayedCallback(`ursaRetry${path}`, retryDelayMs, () => {
                     this.getWithRetrys(path, callback, currentRetryCount + 1)
                 })
@@ -232,26 +232,26 @@ class UrsaClient {
             callback(success, data)
         })
     }
-    getProfiles = (uuid, callback) => {
-        this.getWithRetrys(profilesPath(uuid), callback)
+    getProfiles = (uuid, callback, _maxRetryCount) => {
+        this.getWithRetrys(profilesPath(uuid), callback, _maxRetryCount)
     }
-    getPlayer = (uuid, callback) => {
-        this.getWithRetrys(playerPath(uuid), callback)
+    getPlayer = (uuid, callback, _maxRetryCount) => {
+        this.getWithRetrys(playerPath(uuid), callback, _maxRetryCount)
     }
-    getGuild = (uuid, callback) => {
-        this.getWithRetrys(guildPath(uuid), callback)
+    getGuild = (uuid, callback, _maxRetryCount) => {
+        this.getWithRetrys(guildPath(uuid), callback, _maxRetryCount)
     }
-    getBingo = (uuid, callback) => {
-        this.getWithRetrys(bingoPath(uuid), callback)
+    getBingo = (uuid, callback, _maxRetryCount) => {
+        this.getWithRetrys(bingoPath(uuid), callback, _maxRetryCount)
     }
-    getMuseumForProfile = (profileUuid, callback) => {
-        this.getWithRetrys(museumForProfile(profileUuid), callback)
+    getMuseumForProfile = (profileUuid, callback, _maxRetryCount) => {
+        this.getWithRetrys(museumForProfile(profileUuid), callback, _maxRetryCount)
     }
-    getGardenForProfile = (profileUuid, callback) => {
-        this.getWithRetrys(gardenForProfile(profileUuid), callback)
+    getGardenForProfile = (profileUuid, callback, _maxRetryCount) => {
+        this.getWithRetrys(gardenForProfile(profileUuid), callback, _maxRetryCount)
     }
-    getStatus = (uuid, callback) => {
-        this.getWithRetrys(statusPath(uuid), callback)
+    getStatus = (uuid, callback, _maxRetryCount) => {
+        this.getWithRetrys(statusPath(uuid), callback, _maxRetryCount)
     }
 }
 export const ursaClient = new UrsaClient()
