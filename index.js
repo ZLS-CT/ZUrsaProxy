@@ -77,13 +77,12 @@ class UrsaClient {
         } else {
             if (debug) ChatDebug("Authorizing request using username and serverId")
             const randomServerId = UUID.randomUUID().toString()
+            headers["x-ursa-serverid"] = randomServerId
             if (isLegacy) {
                 // I don't save this, read top of file
                 const session = Client.getMinecraft().func_110432_I() // Client.getMinecraft().getSession() - Check here https://wagyourtail.xyz/Projects/MinecraftMappingViewer/App?version=1.8.9&mapping=YARN,SRG,MCP&search=func_110432_I
                 const username = session.func_111285_a() // session.getUsername() - Check here https://wagyourtail.xyz/Projects/MinecraftMappingViewer/App?version=1.8.9&mapping=YARN,SRG,MCP&search=func_111285_a
-
                 headers["x-ursa-username"] = username
-                headers["x-ursa-serverid"] = randomServerId
 
                 // Joins a random server to verify the account is real
                 Client.getMinecraft().func_152347_ac().joinServer( // Client.getMinecraft().getSessionService() - Check here https://wagyourtail.xyz/Projects/MinecraftMappingViewer/App?version=1.8.9&mapping=YARN,SRG,MCP&search=func_152347_ac
@@ -95,18 +94,15 @@ class UrsaClient {
                 // I don't save this, read top of file
                 const session = Client.getMinecraft().session
                 const username = session.getUsername()
-
                 headers["x-ursa-username"] = username
-                headers["x-ursa-serverid"] = randomServerId
 
                 // Joins a random server to verify the account is real
                 if (gameVersion >= 12109) {
-                    ChatLib.chat(JSON.stringify(Client.getMinecraft().getApiServices().sessionService))
-                    // Client.getMinecraft().getApiServices().sessionService.joinServer(
-                    //     session.getUuidOrNull(),
-                    //     session.getAccessToken(),
-                    //     randomServerId,
-                    // )
+                    Client.getMinecraft().getApiServices().sessionService().joinServer(
+                        session.getUuidOrNull(),
+                        session.getAccessToken(),
+                        randomServerId,
+                    )
                 } else {
                     Client.getMinecraft().getSessionService().joinServer(
                         session.getUuidOrNull(),
