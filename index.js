@@ -13,7 +13,7 @@
 */
 
 import { fetch } from "../ZRequest/fetch"
-import { isLegacy, StartDelayedCallback, _ChatDebug, ChatDebug } from "../ZCore"
+import { isLegacy, gameVersion, StartDelayedCallback, _ChatDebug, ChatDebug, } from "../ZCore"
 
 const UUID = Java.type("java.util.UUID")
 
@@ -100,11 +100,20 @@ class UrsaClient {
                 headers["x-ursa-serverid"] = randomServerId
 
                 // Joins a random server to verify the account is real
-                Client.getMinecraft().getSessionService().joinServer(
-                    session.getUuidOrNull(),
-                    session.getAccessToken(),
-                    randomServerId,
-                )
+                if (gameVersion >= 12109) {
+                    ChatLib.chat(JSON.stringify(Client.getMinecraft().getApiServices().sessionService))
+                    // Client.getMinecraft().getApiServices().sessionService.joinServer(
+                    //     session.getUuidOrNull(),
+                    //     session.getAccessToken(),
+                    //     randomServerId,
+                    // )
+                } else {
+                    Client.getMinecraft().getSessionService().joinServer(
+                        session.getUuidOrNull(),
+                        session.getAccessToken(),
+                        randomServerId,
+                    )
+                }
             }
             if (debug) ChatDebug("Authorizing request using username and serverId complete")
         }
