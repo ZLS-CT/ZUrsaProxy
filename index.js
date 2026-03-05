@@ -66,7 +66,9 @@ class UrsaClient {
         this.authenticationState = AuthenticationState.NOT_ATTEMPTED
 
         register("tick", () => {
-            this.bumpRequests()
+            try {
+                this.bumpRequests()
+            } catch (e) { }
         })
     }
     authorizeRequest(ursaToken = null) {
@@ -113,10 +115,8 @@ class UrsaClient {
             }
             if (debug) ChatDebug("Authorizing request using username and serverId complete")
         }
-
         return headers
     }
-
     saveUrsaToken(responseHeaders) {
         if (debug) ChatDebug("Attempting to save Ursa token")
         const ursaTokenHeader = responseHeaders["X-Ursa-Token"]
@@ -141,7 +141,6 @@ class UrsaClient {
     }
     performRequest(req, ursaToken) {
         const url = `${this.ursaRoot}/${req.path}`
-
         try {
             if (debug) ChatDebug("Ursa Request started")
             const headers = this.authorizeRequest(ursaToken)
@@ -156,26 +155,23 @@ class UrsaClient {
                 this.saveUrsaToken(response.headers || {})
                 req.callback(true, response)
             })
-            .catch((e) => {
-                ChatLog(`§cRequest failed: ${JSON.stringify(req)}|${e.message}|${e.stack}`)
-                this.isPollingForUrsaToken = false
-
-                const errorMessage = e.toString()
-                if (errorMessage.includes("AuthenticationException")) {
-                    this.authenticationState = AuthenticationState.FAILED_TO_JOINSERVER
-                } else if (errorMessage.includes("InvalidCredentialsException")) {
-                    this.authenticationState = AuthenticationState.INVALID_SESSION_TOKEN
-                }
-                if (e.statusCode == 401) {
-                    this.authenticationState = AuthenticationState.REJECTED
-                    this.ursaToken = null
-                }
-                req.callback(false, e)
-            })
+            .catch((e) => { throw e })
         } catch (e) {
-            ChatLog(`§cRequest failed: ${e.message}|${e.stack}`)
             this.isPollingForUrsaToken = false
-            req.callback(false, e)
+            const errorMessage = e.toString()
+            if (errorMessage.includes("AuthenticationException")) {
+                this.authenticationState = AuthenticationState.FAILED_TO_JOINSERVER
+            } else if (errorMessage.includes("InvalidCredentialsException")) {
+                this.authenticationState = AuthenticationState.INVALID_SESSION_TOKEN
+            }
+            if (e.statusCode == 401) {
+                this.authenticationState = AuthenticationState.REJECTED
+                this.ursaToken = null
+            }
+            req.callback(false, {
+                error: e,
+                state: this.authenticationState,
+            })
         }
     }
     bumpRequests() {
@@ -206,14 +202,14 @@ class UrsaClient {
     clearUrsaToken() {
         this.ursaToken = null
     }
-    get(path, callback) {
-        this.queue.push(new Request(path, callback))
-    }
     getAuthenticationState() {
         if (this.authenticationState == AuthenticationState.SUCCEEDED && (this.ursaToken == null || !this.ursaToken?.isValid())) {
             return AuthenticationState.OUTDATED
         }
         return this.authenticationState
+    }
+    get(path, callback) {
+        this.queue.push(new Request(path, callback))
     }
     getWithRetrys(path, callback, _maxRetryCount = maxRetryCount, currentRetryCount = 0) {
         this.get(path, (success, data) => {
