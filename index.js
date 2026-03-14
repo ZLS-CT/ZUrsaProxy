@@ -20,6 +20,7 @@ const UUID = Java.type("java.util.UUID")
 const maxRetryCount = 3
 const retryDelayMs = 1000
 const chatPrefix = "§6[§9UrsaMinor§6] §r"
+let lastServerID = null
 const debug = false
 
 const AuthenticationState = {
@@ -52,8 +53,9 @@ class UrsaToken {
     }
 }
 class Request {
-    constructor(path, callback) {
+    constructor(path, forceRejoin, callback) {
         this.path = path
+        this.forceRejoin = forceRejoin
         this.callback = callback
     }
 }
@@ -71,50 +73,66 @@ class UrsaClient {
             } catch (e) { }
         })
     }
-    authorizeRequest(ursaToken = null) {
+    authorizeRequest(req, ursaToken = null) {
         let headers = {}
         if (ursaToken != null && ursaToken.obtainedFrom == this.ursaRoot) {
             if (debug) ChatDebug("Authorizing request using Ursa Token")
             headers["x-ursa-token"] = ursaToken.ursaToken
-        } else {
-            if (debug) ChatDebug("Authorizing request using username and serverId")
-            const randomServerId = UUID.randomUUID().toString()
-            headers["x-ursa-serverid"] = randomServerId
-            if (isLegacy) {
-                // I don't save this, read top of file
-                const session = Client.getMinecraft().func_110432_I() // Client.getMinecraft().getSession() - Check here https://wagyourtail.xyz/Projects/MinecraftMappingViewer/App?version=1.8.9&mapping=YARN,SRG,MCP&search=func_110432_I
-                const username = session.func_111285_a() // session.getUsername() - Check here https://wagyourtail.xyz/Projects/MinecraftMappingViewer/App?version=1.8.9&mapping=YARN,SRG,MCP&search=func_111285_a
-                headers["x-ursa-username"] = username
+            return headers
+        }
 
-                // Joins a random server to verify the account is real
-                Client.getMinecraft().func_152347_ac().joinServer( // Client.getMinecraft().getSessionService() - Check here https://wagyourtail.xyz/Projects/MinecraftMappingViewer/App?version=1.8.9&mapping=YARN,SRG,MCP&search=func_152347_ac
-                    session.func_148256_e(), // session.getProfile() - Check here https://wagyourtail.xyz/Projects/MinecraftMappingViewer/App?version=1.8.9&mapping=YARN,SRG,MCP&search=func_148256_e
-                    session.func_148254_d(), // session.getAccessToken() - Check here https://wagyourtail.xyz/Projects/MinecraftMappingViewer/App?version=1.8.9&mapping=YARN,SRG,MCP&search=func_148254_d
-                    randomServerId,
-                )
-            } else {
-                // I don't save this, read top of file
-                const session = Client.getMinecraft().session
-                const username = session.getUsername()
-                headers["x-ursa-username"] = username
-
-                // Joins a random server to verify the account is real
-                if (gameVersion >= 12109) {
-                    Client.getMinecraft().getApiServices().sessionService().joinServer(
-                        session.getUuidOrNull(),
-                        session.getAccessToken(),
-                        randomServerId,
-                    )
-                } else {
-                    Client.getMinecraft().getSessionService().joinServer(
-                        session.getUuidOrNull(),
-                        session.getAccessToken(),
-                        randomServerId,
-                    )
+        if (debug) ChatDebug("Authorizing request using username and serverId")
+        const randomServerId = UUID.randomUUID().toString()
+        if (isLegacy) {
+            // I don't save this, read top of file
+            const session = Client.getMinecraft().func_110432_I() // Client.getMinecraft().getSession() - Check here https://wagyourtail.xyz/Projects/MinecraftMappingViewer/App?version=1.8.9&mapping=YARN,SRG,MCP&search=func_110432_I
+            const username = session.func_111285_a() // session.getUsername() - Check here https://wagyourtail.xyz/Projects/MinecraftMappingViewer/App?version=1.8.9&mapping=YARN,SRG,MCP&search=func_111285_a
+            headers["x-ursa-username"] = username
+            if (!req.forceRejoin && lastServerID) {
+                return {
+                    ...headers,
+                    "x-ursa-serverid": lastServerID,
                 }
             }
-            if (debug) ChatDebug("Authorizing request using username and serverId complete")
+            headers["x-ursa-serverid"] = randomServerId
+            lastServerID = randomServerId
+
+            // Joins a random server to verify the account is real
+            Client.getMinecraft().func_152347_ac().joinServer( // Client.getMinecraft().getSessionService() - Check here https://wagyourtail.xyz/Projects/MinecraftMappingViewer/App?version=1.8.9&mapping=YARN,SRG,MCP&search=func_152347_ac
+                session.func_148256_e(), // session.getProfile() - Check here https://wagyourtail.xyz/Projects/MinecraftMappingViewer/App?version=1.8.9&mapping=YARN,SRG,MCP&search=func_148256_e
+                session.func_148254_d(), // session.getAccessToken() - Check here https://wagyourtail.xyz/Projects/MinecraftMappingViewer/App?version=1.8.9&mapping=YARN,SRG,MCP&search=func_148254_d
+                randomServerId,
+            )
+            return headers
         }
+
+        // I don't save this, read top of file
+        const session = Client.getMinecraft().session
+        const username = session.getUsername()
+        headers["x-ursa-username"] = username
+        if (!req.forceRejoin && lastServerID) {
+            return {
+                ...headers,
+                "x-ursa-serverid": lastServerID,
+            }
+        }
+        headers["x-ursa-serverid"] = randomServerId
+        lastServerID = randomServerId
+
+        // Joins a random server to verify the account is real
+        if (gameVersion >= 12109) {
+            Client.getMinecraft().getApiServices().sessionService().joinServer(
+                session.getUuidOrNull(),
+                session.getAccessToken(),
+                randomServerId,
+            )
+            return headers
+        }
+        Client.getMinecraft().getSessionService().joinServer(
+            session.getUuidOrNull(),
+            session.getAccessToken(),
+            randomServerId,
+        )
         return headers
     }
     saveUrsaToken(responseHeaders) {
@@ -143,8 +161,8 @@ class UrsaClient {
         const url = `${this.ursaRoot}/${req.path}`
         try {
             if (debug) ChatDebug("Ursa Request started")
-            const headers = this.authorizeRequest(ursaToken)
-            if (debug) ChatDebug(`Sending request to ${url} with headers ${JSON.stringify(headers)}`)
+            const headers = this.authorizeRequest(req, ursaToken)
+            if (debug) ChatDebug(`Sending request to ${url} with headers ${JSON.stringify(headers)} and request ${JSON.stringify(req)}`)
             fetch(url, {
                 headers: headers,
                 json: true,
@@ -155,7 +173,10 @@ class UrsaClient {
                 this.saveUrsaToken(response.headers || {})
                 req.callback(true, response)
             })
-            .catch((e) => { throw e })
+            .catch((e) => {
+                if (debug) ChatDebug(`Request failed with error: ${e}`)
+                throw e
+            })
         } catch (e) {
             this.isPollingForUrsaToken = false
             const errorMessage = e.toString()
@@ -208,11 +229,11 @@ class UrsaClient {
         }
         return this.authenticationState
     }
-    get(path, callback) {
-        this.queue.push(new Request(path, callback))
+    get(path, forceRejoin, callback) {
+        this.queue.push(new Request(path, forceRejoin, callback))
     }
-    getWithRetrys(path, callback, _maxRetryCount = maxRetryCount, currentRetryCount = 0) {
-        this.get(path, (success, data) => {
+    getWithRetrys(path, callback, _forceRejoin = true, _maxRetryCount = maxRetryCount, currentRetryCount = 0) {
+        this.get(path, _forceRejoin, (success, data) => {
             if (!success && currentRetryCount < _maxRetryCount) {
                 if (this.authenticationState == AuthenticationState.REJECTED) {
                     ChatLog("§cUrsa request rejected. Not retrying.")
@@ -226,33 +247,33 @@ class UrsaClient {
 
                 if (debug) ChatDebug(`Request failed, retrying ${currentRetryCount + 1}/${_maxRetryCount}`)
                 StartDelayedCallback(`ursaRetry${path}`, retryDelayMs, () => {
-                    this.getWithRetrys(path, callback, currentRetryCount + 1)
+                    this.getWithRetrys(path, callback, false, _maxRetryCount, currentRetryCount + 1)
                 })
                 return
             }
             callback(success, data)
         })
     }
-    getProfiles = (uuid, callback, _maxRetryCount) => {
-        this.getWithRetrys(profilesPath(uuid), callback, _maxRetryCount)
+    getProfiles = (uuid, callback, _forceRejoin = true, _maxRetryCount = 0) => {
+        this.getWithRetrys(profilesPath(uuid), callback, _forceRejoin, _maxRetryCount)
     }
-    getPlayer = (uuid, callback, _maxRetryCount) => {
-        this.getWithRetrys(playerPath(uuid), callback, _maxRetryCount)
+    getPlayer = (uuid, callback, _forceRejoin = true, _maxRetryCount = 0) => {
+        this.getWithRetrys(playerPath(uuid), callback, _forceRejoin, _maxRetryCount)
     }
-    getGuild = (uuid, callback, _maxRetryCount) => {
-        this.getWithRetrys(guildPath(uuid), callback, _maxRetryCount)
+    getGuild = (uuid, callback, _forceRejoin = true, _maxRetryCount = 0) => {
+        this.getWithRetrys(guildPath(uuid), callback, _forceRejoin, _maxRetryCount)
     }
-    getBingo = (uuid, callback, _maxRetryCount) => {
-        this.getWithRetrys(bingoPath(uuid), callback, _maxRetryCount)
+    getBingo = (uuid, callback, _forceRejoin = true, _maxRetryCount = 0) => {
+        this.getWithRetrys(bingoPath(uuid), callback, _forceRejoin, _maxRetryCount)
     }
-    getMuseumForProfile = (profileUuid, callback, _maxRetryCount) => {
-        this.getWithRetrys(museumForProfile(profileUuid), callback, _maxRetryCount)
+    getMuseumForProfile = (profileUuid, callback, _forceRejoin = true, _maxRetryCount = 0) => {
+        this.getWithRetrys(museumForProfile(profileUuid), callback, _forceRejoin, _maxRetryCount)
     }
-    getGardenForProfile = (profileUuid, callback, _maxRetryCount) => {
-        this.getWithRetrys(gardenForProfile(profileUuid), callback, _maxRetryCount)
+    getGardenForProfile = (profileUuid, callback, _forceRejoin = true, _maxRetryCount = 0) => {
+        this.getWithRetrys(gardenForProfile(profileUuid), callback, _forceRejoin, _maxRetryCount)
     }
-    getStatus = (uuid, callback, _maxRetryCount) => {
-        this.getWithRetrys(statusPath(uuid), callback, _maxRetryCount)
+    getStatus = (uuid, callback, _forceRejoin = true, _maxRetryCount = 0) => {
+        this.getWithRetrys(statusPath(uuid), callback, _forceRejoin, _maxRetryCount)
     }
 }
 export const ursaClient = new UrsaClient()
