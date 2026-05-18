@@ -27,6 +27,8 @@ const AuthenticationState = {
     NOT_ATTEMPTED: "NOT_ATTEMPTED",
     FAILED_TO_JOINSERVER: "FAILED_TO_JOINSERVER",
     INVALID_SESSION_TOKEN: "INVALID_SESSION_TOKEN",
+    MICROSOFT_RATE_LIMIT: "MICROSOFT_RATE_LIMIT",
+    URSA_RATE_LIMIT: "URSA_RATE_LIMIT",
     REJECTED: "REJECTED",
     SUCCEEDED: "SUCCEEDED",
     OUTDATED: "OUTDATED",
@@ -157,6 +159,27 @@ class UrsaClient {
             if (debug) ChatDebug("Ursa Token saving successful")
         }
     }
+    catchRequestErrors(req, e) {
+        if (debug) ChatDebug(`Request failed with error: ${e.message}`, e.stack)
+        this.isPollingForUrsaToken = false
+        const errorMessage = e.toString()
+        if (errorMessage.includes("AuthenticationException")) {
+            this.authenticationState = AuthenticationState.MICROSOFT_RATE_LIMIT
+        } else if (errorMessage.includes("InvalidCredentialsException")) {
+            this.authenticationState = AuthenticationState.INVALID_SESSION_TOKEN
+        } else if (errorMessage.includes("429 Rate limit exceeded")) {
+            this.authenticationState = AuthenticationState.URSA_RATE_LIMIT
+        }
+
+        if (e.statusCode == 401) {
+            this.authenticationState = AuthenticationState.REJECTED
+            this.ursaToken = null
+        }
+        req.callback(false, {
+            error: e,
+            state: this.authenticationState,
+        })
+    }
     performRequest(req, ursaToken) {
         const url = `${this.ursaRoot}/${req.path}`
         try {
@@ -165,34 +188,32 @@ class UrsaClient {
             if (debug) ChatDebug(`Sending request to ${url} with headers ${JSON.stringify(headers)} and request ${JSON.stringify(req)}`)
             fetch(url, {
                 headers: headers,
-                json: true,
+                fullResponse: true,
                 timeout: 10000,
             })
             .then((response) => {
-                if (debug) ChatDebug(`Request completed.`)
+                if (debug) ChatDebug(`Response received for ${url}.`)
+                let _responseJSON = null
+
+                if (response.body && response.body.includes("429 Rate limit exceeded")) {
+                    throw new Error("429 Rate limit exceeded")
+                }
+
+                try {
+                    _responseJSON = JSON.parse(response.body)
+                } catch (e) {
+                    if (debug) ChatDebug(`Failed to parse JSON response: ${e.message}`)
+                    throw e
+                }
+                req.callback(true, _responseJSON)
                 this.saveUrsaToken(response.headers || {})
-                req.callback(true, response)
+                if (debug) ChatDebug(`Request completed.`)
             })
             .catch((e) => {
-                if (debug) ChatDebug(`Request failed with error: ${e}`)
-                throw e
+                this.catchRequestErrors(req, e)
             })
         } catch (e) {
-            this.isPollingForUrsaToken = false
-            const errorMessage = e.toString()
-            if (errorMessage.includes("AuthenticationException")) {
-                this.authenticationState = AuthenticationState.FAILED_TO_JOINSERVER
-            } else if (errorMessage.includes("InvalidCredentialsException")) {
-                this.authenticationState = AuthenticationState.INVALID_SESSION_TOKEN
-            }
-            if (e.statusCode == 401) {
-                this.authenticationState = AuthenticationState.REJECTED
-                this.ursaToken = null
-            }
-            req.callback(false, {
-                error: e,
-                state: this.authenticationState,
-            })
+            this.catchRequestErrors(req, e)
         }
     }
     bumpRequests() {
