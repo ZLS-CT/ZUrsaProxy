@@ -139,8 +139,8 @@ class UrsaClient {
     }
     saveUrsaToken(responseHeaders) {
         if (debug) ChatDebug("Attempting to save Ursa token")
-        const ursaTokenHeader = responseHeaders["X-Ursa-Token"]
-        const expiresHeader = responseHeaders["X-Ursa-Expires"]
+        const ursaTokenHeader = responseHeaders["x-ursa-token"]
+        const expiresHeader = responseHeaders["x-ursa-expires"]
 
         let validUntil = Date.now() + 55 * 60 * 1000
         if (expiresHeader) {
