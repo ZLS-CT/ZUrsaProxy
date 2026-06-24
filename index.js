@@ -15,8 +15,6 @@
 import { fetch } from "../ZRequest/fetch"
 import { isLegacy, gameVersion, StartDelayedCallback, _ChatDebug, ChatDebug, } from "../ZCore"
 
-const UUID = Java.type("java.util.UUID")
-
 const maxRetryCount = 3
 const retryDelayMs = 1000
 const chatPrefix = "§6[§9UrsaMinor§6] §r"
@@ -109,8 +107,8 @@ class UrsaClient {
         }
 
         // I don't save this, read top of file
-        const session = Client.getMinecraft().session
-        const username = session.getUsername()
+        const session = Client.getMinecraft().user
+        const username = session.getName()
         headers["x-ursa-username"] = username
         if (!req.forceRejoin && lastServerID) {
             return {
@@ -123,8 +121,8 @@ class UrsaClient {
 
         // Joins a random server to verify the account is real
         if (gameVersion >= 12109) {
-            Client.getMinecraft().getApiServices().sessionService().joinServer(
-                session.getUuidOrNull(),
+            Client.getMinecraft().services().sessionService().joinServer(
+                session.getProfileId(),
                 session.getAccessToken(),
                 randomServerId,
             )
